@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { Plus, Check, Circle, Ban, Mountain, Flame, Activity, Droplets, BookOpen, Moon, Utensils, Dumbbell, Sun, Palette, MoreHorizontal, Edit2, ExternalLink } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
+import SwipeToDeleteItem from './SwipeToDeleteItem';
 
 const IconMap: Record<string, any> = {
   mountain: Mountain, activity: Activity, droplets: Droplets, bookOpen: BookOpen,
@@ -20,7 +21,7 @@ const QUOTES = [
 ];
 
 const TodayView = ({ onOpenModal }: { onOpenModal: () => void }) => {
-  const { routines, logs, logRoutine, clearLog } = useRoutine();
+  const { routines, logs, logRoutine, clearLog, deleteRoutine } = useRoutine();
   const { currentStreak } = useStats();
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const dayOfWeek = new Date().getDay();
@@ -99,27 +100,29 @@ const TodayView = ({ onOpenModal }: { onOpenModal: () => void }) => {
             const IconComp = IconMap[routine.icon] || Activity;
             
             return (
-              <div key={routine.id} className={`list-item glass-card ${status}`}>
-                <div className={`icon-box ${status}`}>
-                  <IconComp size={20} />
-                </div>
-                <div className="item-text">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span className="item-title">{routine.title}</span>
-                    {routine.link && (
-                      <a href={routine.link} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', color: 'var(--primary)', textDecoration: 'none' }}>
-                        <ExternalLink size={16} />
-                      </a>
-                    )}
+              <SwipeToDeleteItem key={routine.id} onDelete={() => deleteRoutine(routine.id)}>
+                <div className={`list-item glass-card ${status}`}>
+                  <div className={`icon-box ${status}`}>
+                    <IconComp size={20} />
                   </div>
-                  <span className="item-status">
-                     {status === 'done' ? '✓ 완료' : status === 'skip' ? '건너뜀' : '• 진행 전'}
-                  </span>
+                  <div className="item-text">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span className="item-title">{routine.title}</span>
+                      {routine.link && (
+                        <a href={routine.link} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', color: 'var(--primary)', textDecoration: 'none' }}>
+                          <ExternalLink size={16} />
+                        </a>
+                      )}
+                    </div>
+                    <span className="item-status">
+                       {status === 'done' ? '✓ 완료' : status === 'skip' ? '건너뜀' : '• 진행 전'}
+                    </span>
+                  </div>
+                  <button className={`action-circle ${status}`} onClick={() => status === 'done' ? clearLog(routine.id, todayStr) : logRoutine(routine.id, todayStr, 'done')} onContextMenu={(e) => { e.preventDefault(); logRoutine(routine.id, todayStr, 'skip'); }}>
+                    {status === 'done' ? <Check size={20} color="#000" /> : status === 'skip' ? <Ban size={20} /> : <Circle size={20} />}
+                  </button>
                 </div>
-                <button className={`action-circle ${status}`} onClick={() => status === 'done' ? clearLog(routine.id, todayStr) : logRoutine(routine.id, todayStr, 'done')} onContextMenu={(e) => { e.preventDefault(); logRoutine(routine.id, todayStr, 'skip'); }}>
-                  {status === 'done' ? <Check size={20} color="#000" /> : status === 'skip' ? <Ban size={20} /> : <Circle size={20} />}
-                </button>
-              </div>
+              </SwipeToDeleteItem>
             );
           })}
           {todaysRoutines.length === 0 && (

@@ -8,8 +8,10 @@ const IconMap: Record<string, any> = {
 
 const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
+import SwipeToDeleteItem from './SwipeToDeleteItem';
+
 const ManageView = ({ onOpenModal }: { onOpenModal: () => void }) => {
-  const { routines, toggleRoutineActive } = useRoutine();
+  const { routines, toggleRoutineActive, deleteRoutine } = useRoutine();
   const activeCount = routines.filter(r => r.isActive).length;
 
   return (
@@ -32,29 +34,31 @@ const ManageView = ({ onOpenModal }: { onOpenModal: () => void }) => {
           const daysText = isEveryDay ? '매일' : routine.days.map(d => DAYS[d]).join(', ');
           
           return (
-            <div key={routine.id} className={`manage-card glass-card ${!routine.isActive ? 'inactive' : ''}`}>
-              <div className="card-left">
-                <div className={`icon-box-lg`}>
-                  <IconComp size={24} color={routine.isActive ? "var(--secondary)" : "var(--on-surface-variant)"} />
-                </div>
-                <div className="card-info">
-                  <div className="time-badge">
-                    <span className="time">{routine.time}</span>
-                    <span className="days">{daysText}</span>
+            <SwipeToDeleteItem key={routine.id} onDelete={() => deleteRoutine(routine.id)}>
+              <div className={`manage-card glass-card ${!routine.isActive ? 'inactive' : ''}`}>
+                <div className="card-left">
+                  <div className={`icon-box-lg`}>
+                    <IconComp size={24} color={routine.isActive ? "var(--secondary)" : "var(--on-surface-variant)"} />
                   </div>
-                  <h3>{routine.title}</h3>
+                  <div className="card-info">
+                    <div className="time-badge">
+                      <span className="time">{routine.time}</span>
+                      <span className="days">{daysText}</span>
+                    </div>
+                    <h3>{routine.title}</h3>
+                  </div>
+                </div>
+                <div className="toggle-switch">
+                  <input 
+                    type="checkbox" 
+                    checked={routine.isActive} 
+                    onChange={() => toggleRoutineActive(routine.id)} 
+                    id={`toggle-${routine.id}`}
+                  />
+                  <label htmlFor={`toggle-${routine.id}`}></label>
                 </div>
               </div>
-              <div className="toggle-switch">
-                <input 
-                  type="checkbox" 
-                  checked={routine.isActive} 
-                  onChange={() => toggleRoutineActive(routine.id)} 
-                  id={`toggle-${routine.id}`}
-                />
-                <label htmlFor={`toggle-${routine.id}`}></label>
-              </div>
-            </div>
+            </SwipeToDeleteItem>
           );
         })}
       </div>

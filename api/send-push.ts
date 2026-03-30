@@ -2,13 +2,18 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { kv } from '@vercel/kv';
 import * as webpush from 'web-push';
 
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
-  process.env.VITE_VAPID_PUBLIC_KEY || '',
-  process.env.VAPID_PRIVATE_KEY || ''
-);
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {  
+  try {
+    webpush.setVapidDetails(
+      process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
+      process.env.VITE_VAPID_PUBLIC_KEY || '',
+      process.env.VAPID_PRIVATE_KEY || ''
+    );
+  } catch (err: any) {
+    console.error('VAPID Setup Error:', err);
+    return res.status(200).json({ success: false, error: 'VAPID Setup Error', details: err.message });
+  }
+
   const now = new Date();
   
   // 한국 시간(KST) 보정 (Vercel Edge/Serverless는 기본적으로 UTC)
@@ -22,13 +27,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     let cursor: string | number = 0;
     const notificationsToSend: Promise<any>[] = [];
+    let scannedKeys = 0;
 
     // Vercel KV에서 접속 가능한 모든 유저 구독 데이터를 스캔
     do {
-      const [nextCursor, keys] = (await kv.scan(cursor, { match: 'sub:*', count: 100 })) as [number | string, string[]];
+      const scanResult: any = await kv.scan(cursor, { match: 'sub:*', count: 100 });
+      let nextCursor;
+      let keys: string[];
+
+      // Handle both [cursor, keys] and { cursor, keys } formats depending on @upstash/redis version
+      if (Array.isArray(scanResult)) {
+        nextCursor = scanResult[0];
+        keys = scanResult[1];
+      } else if (scanResult && typeof scanResult === 'object') {
+        nextCursor = scanResult.cursor;
+        keys = scanResult.keys || scanResult.elements || [];
+      } else {
+        throw new Error('Unexpected kv.scan result format');
+      }
+
       cursor = nextCursor;
       
-      if (keys.length > 0) {
+      if (keys && keys.length > 0) {
+        scannedKeys += keys.length;
         const usersData = await kv.mget(...keys);
         
         usersData.forEach((data: any, index) => {
@@ -45,13 +66,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 vibrate: [200, 100, 200]
               });
               
+              const subKey = keys[index];
               notificationsToSend.push(
                 webpush.sendNotification(data.subscription, payload)
                   .catch(err => {
                     if (err.statusCode === 404 || err.statusCode === 410) {
                       // 구독자 만료 시 데이터베이스 자동 삭제
-                      console.log('Subscription expired, deleting', keys[index]);
-                      return kv.del(keys[index]);
+                      console.log('Subscription expired, deleting', subKey);
+                      return kv.del(subKey);
                     } else {
                       console.error('Push error:', err);
                     }
@@ -61,14 +83,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
         });
       }
-    } while (cursor !== 0);
+    } while (cursor !== 0 && cursor !== '0');
 
     // 모아둔 모든 푸시 알림 병렬 발송
     await Promise.all(notificationsToSend);
 
-    res.status(200).json({ success: true, sentCount: notificationsToSend.length, time: currentTime });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to send push notifications' });
+    return res.status(200).json({ success: true, sentCount: notificationsToSend.length, scannedKeys, time: currentTime });
+  } catch (error: any) {
+    console.error('Push Job Error:', error);
+    // 500으로 하면 cron-job이 에러만 보여주므로 200으로 반환하고 에러내용을 담음
+    return res.status(200).json({ success: false, error: 'Push Job Error', details: error.message, stack: error.stack });
   }
 }
