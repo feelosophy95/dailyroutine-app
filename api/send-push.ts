@@ -25,7 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Vercel KV에서 접속 가능한 모든 유저 구독 데이터를 스캔
     do {
-      const [nextCursor, keys] = await kv.scan(cursor, { match: 'sub:*', count: 100 });
+      const [nextCursor, keys] = (await kv.scan(cursor, { match: 'sub:*', count: 100 })) as [number | string, string[]];
       cursor = nextCursor;
       
       if (keys.length > 0) {
