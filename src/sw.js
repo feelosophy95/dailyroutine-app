@@ -1,3 +1,8 @@
+import { precacheAndRoute } from 'workbox-precaching';
+
+// VitePWA injectManifest will inject the precache manifest array into self.__WB_MANIFEST
+precacheAndRoute(self.__WB_MANIFEST || []);
+
 self.addEventListener('push', function (event) {
   if (event.data) {
     let data = {};

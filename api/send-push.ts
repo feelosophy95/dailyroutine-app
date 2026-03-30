@@ -5,7 +5,7 @@ import webpush from 'web-push';
 export default async function handler(req: VercelRequest, res: VercelResponse) {  
   try {
     webpush.setVapidDetails(
-      process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
+      process.env.VAPID_SUBJECT || 'mailto:admin@dailyroutine.test',
       process.env.VITE_VAPID_PUBLIC_KEY || '',
       process.env.VAPID_PRIVATE_KEY || ''
     );
@@ -15,8 +15,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const now = new Date();
-  
-  // 한국 시간(KST) 보정 (Vercel Edge/Serverless는 기본적으로 UTC)
+  // 한국 시간(KST) 보정 
   now.setHours(now.getHours() + 9);
   
   const currentDay = now.getDay();
@@ -29,13 +28,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const notificationsToSend: Promise<any>[] = [];
     let scannedKeys = 0;
 
-    // Vercel KV에서 접속 가능한 모든 유저 구독 데이터를 스캔
+    // Vercel KV 스캔 시작
     do {
       const scanResult: any = await kv.scan(cursor, { match: 'sub:*', count: 100 });
       let nextCursor;
       let keys: string[];
 
-      // Handle both [cursor, keys] and { cursor, keys } formats depending on @upstash/redis version
       if (Array.isArray(scanResult)) {
         nextCursor = scanResult[0];
         keys = scanResult[1];
@@ -53,10 +51,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const usersData = await kv.mget(...keys);
         
         usersData.forEach((data: any, index) => {
-          if (!data || !data.routines) return;
+          if (!data || !data.routines || !data.subscription) return;
           
           data.routines.forEach((routine: any) => {
-            // 해당 요일, 시간이 일치하는지 체크
             if (routine.isActive && routine.days.includes(currentDay) && routine.time === currentTime) {
               const payload = JSON.stringify({
                 title: '🔥 잊지 마세요!',
@@ -67,31 +64,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               });
               
               const subKey = keys[index];
-              notificationsToSend.push(
-                webpush.sendNotification(data.subscription, payload)
-                  .catch(err => {
-                    if (err.statusCode === 404 || err.statusCode === 410) {
-                      // 구독자 만료 시 데이터베이스 자동 삭제
-                      console.log('Subscription expired, deleting', subKey);
-                      return kv.del(subKey);
-                    } else {
-                      console.error('Push error:', err);
-                    }
-                  })
-              );
+              const pushPromise = async () => {
+                try {
+                  await webpush.sendNotification(data.subscription, payload);
+                } catch (err: any) {
+                  if (err.statusCode === 404 || err.statusCode === 410) {
+                    console.log('Subscription expired, deleting', subKey);
+                    await kv.del(subKey);
+                  } else {
+                    console.error('Push error for', subKey, ':', err);
+                  }
+                }
+              };
+              
+              notificationsToSend.push(pushPromise());
             }
           });
         });
       }
     } while (cursor !== 0 && cursor !== '0');
 
-    // 모아둔 모든 푸시 알림 병렬 발송
-    await Promise.all(notificationsToSend);
+    // Timeout 방어를 위해 Promise.allSettled를 사용해 병렬 발송 안정성 증가
+    const results = await Promise.allSettled(notificationsToSend);
+    const sentCount = results.filter(r => r.status === 'fulfilled').length;
+    const failedCount = results.filter(r => r.status === 'rejected').length;
 
-    return res.status(200).json({ success: true, sentCount: notificationsToSend.length, scannedKeys, time: currentTime });
+    return res.status(200).json({ 
+      success: true, 
+      sentCount, 
+      failedCount, 
+      scannedKeys, 
+      time: currentTime 
+    });
   } catch (error: any) {
     console.error('Push Job Error:', error);
-    // 500으로 하면 cron-job이 에러만 보여주므로 200으로 반환하고 에러내용을 담음
-    return res.status(200).json({ success: false, error: 'Push Job Error', details: error.message, stack: error.stack });
+    return res.status(200).json({ success: false, error: 'Push Job Error', details: error.message });
   }
 }

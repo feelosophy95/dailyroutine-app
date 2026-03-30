@@ -1,0 +1,8 @@
+{
+	"appId": "com.feelosophy.dailyroutine",
+	"appName": "Daily Routine",
+	"webDir": "dist",
+	"packageClassList": [
+		"LocalNotificationsPlugin"
+	]
+}

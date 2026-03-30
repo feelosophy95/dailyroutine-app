@@ -52,24 +52,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           
           const subKey = keys[index];
-          notificationsToSend.push(
-            webpush.sendNotification(data.subscription, payload)
-              .catch(err => {
+          
+          const pushPromise = async () => {
+             try {
+                await webpush.sendNotification(data.subscription, payload);
+             } catch (err: any) {
                 if (err.statusCode === 404 || err.statusCode === 410) {
                    console.log('Subscription expired, deleting', subKey);
-                   return kv.del(subKey);
+                   await kv.del(subKey);
                 } else {
-                  console.error('Push error:', err);
+                   console.error('Push error for', subKey, ':', err);
                 }
-              })
-          );
+             }
+          };
+
+          notificationsToSend.push(pushPromise());
         });
       }
     } while (cursor !== 0 && cursor !== '0');
 
-    await Promise.all(notificationsToSend);
+    const results = await Promise.allSettled(notificationsToSend);
+    const sentCount = results.filter(r => r.status === 'fulfilled').length;
+    const failedCount = results.filter(r => r.status === 'rejected').length;
 
-    return res.status(200).json({ success: true, sentCount: notificationsToSend.length, scannedKeys });
+    return res.status(200).json({ success: true, sentCount, failedCount, scannedKeys });
   } catch (error: any) {
     console.error('Test Push Error:', error);
     return res.status(200).json({ success: false, error: 'Test Push Error', details: error.message, stack: error.stack });
