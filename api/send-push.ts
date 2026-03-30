@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { kv } from '@vercel/kv';
-import * as webpush from 'web-push';
+import webpush from 'web-push';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {  
   try {
