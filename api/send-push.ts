@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { kv } from '@vercel/kv';
-import webpush from 'web-push';
+import * as webpush from 'web-push';
 
 webpush.setVapidDetails(
   process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
